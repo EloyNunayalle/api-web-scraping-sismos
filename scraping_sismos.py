@@ -3,44 +3,33 @@ import boto3
 import uuid
 
 def lambda_handler(event, context):
-    url = "https://ultimosismo.igp.gob.pe/api/sismo"
-    response = requests.get(url)
+    datos = obtener_ultimo_sismo()
+    if not datos:
+        return {"statusCode": 404,"body": "No se obtuvieron datos del IGP."}
 
-    if response.status_code != 200:
-        return {
-            'statusCode': response.status_code,
-            'body': 'No se pudo acceder a la API del IGP.'
-        }
-
-    data = response.json()
     rows = []
+    for feat in datos[:10]:
+        a = feat["attributes"]
+        rows.append({
+            "id": str(uuid.uuid4()),
+            "fecha_hora": a["FECHA_HORA"],
+            "magnitud": a["MAGNITUD"],
+            "referencia": a.get("UBICACION", "")
+        })
 
-    for sismo in data[:10]:  # Solo los 10 más recientes
-        item = {
-            'id': str(uuid.uuid4()),
-            'reporte': sismo.get('title', ''),
-            'referencia': sismo.get('reference', ''),
-            'fecha_hora': sismo.get('datetime', ''),
-            'magnitud': sismo.get('mag', '')
-        }
-        rows.append(item)
+    db = boto3.resource('dynamodb').Table('TablaSismosIGP')
+    with db.batch_writer() as batch:
+        for r in rows:
+            batch.put_item(Item=r)
 
-    # Conectar a DynamoDB
-    dynamodb = boto3.resource('dynamodb')
-    table = dynamodb.Table('TablaSismosIGP')
+    return {"statusCode":200,
+            "body": f"{len(rows)} sismos insertados correctamente."}
 
-    # Eliminar items antiguos
-    scan = table.scan()
-    with table.batch_writer() as batch:
-        for item in scan.get('Items', []):
-            batch.delete_item(Key={'id': item['id']})
+def obtener_ultimo_sismo():
+    url = "https://ide.igp.gob.pe/arcgis/rest/services/monitoreocensis/UltimoSismo/MapServer/0/query"
+    params = {"where":"1=1","outFields":"*","f":"json",
+              "orderByFields":"FECHA_HORA DESC","resultRecordCount":10}
+    resp = requests.get(url, params=params, timeout=10)
+    resp.raise_for_status()
+    return resp.json().get("features", [])
 
-    # Insertar nuevos items
-    with table.batch_writer() as batch:
-        for row in rows:
-            batch.put_item(Item=row)
-
-    return {
-        'statusCode': 200,
-        'body': f"{len(rows)} sismos insertados correctamente desde API."
-    }
