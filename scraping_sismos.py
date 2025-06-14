@@ -1,7 +1,7 @@
 import requests
 import boto3
 import uuid
-
+###### no funciona porque .......
 def lambda_handler(event, context):
     datos = obtener_ultimo_sismo()
     if not datos:
