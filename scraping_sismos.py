@@ -5,7 +5,9 @@ import uuid
 
 def lambda_handler(event, context):
     url = "https://ultimosismo.igp.gob.pe/ultimo-sismo/sismos-reportados"
-    response = requests.get(url)
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    response = requests.get(url, headers=headers)
+
 
     if response.status_code != 200:
         return {
