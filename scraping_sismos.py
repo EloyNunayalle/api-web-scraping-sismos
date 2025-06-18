@@ -1,59 +1,63 @@
 import requests
 import boto3
 import uuid
-import json
-
+from datetime import datetime
 
 def lambda_handler(event, context):
+    # API oficial IGP
     url = "https://ultimosismo.igp.gob.pe/api/ultimo-sismo/ajaxb/2025"
-    
-    response = requests.get(url)
-    
-    if response.status_code != 200:
-        return {
-            'statusCode': response.status_code,
-            'body': 'No se pudo acceder a la API del IGP.'
-        }
+
+    resp = requests.get(url)
+    if resp.status_code != 200:
+        return {'statusCode': resp.status_code, 'body': 'Error al obtener datos desde API IGP'}
 
     try:
-        data = response.json()
-        print(json.dumps(data, ensure_ascii=False))
+        data = resp.json()
     except ValueError:
-        return {
-            'statusCode': 500,
-            'body': 'La respuesta no es un JSON válido.'
-        }
+        return {'statusCode': 500, 'body': 'Respuesta no es JSON'}
 
-    # Tomar los primeros 10 sismos
+    # Parsear fechas y ordenar de más reciente a más antigua
+    for item in data:
+        fecha = item.get('fecha_hora_local')
+        try:
+            # Ajusta formato si es necesario
+            item['_ts'] = datetime.strptime(fecha, "%d/%m/%Y %H:%M:%S")
+        except Exception:
+            item['_ts'] = datetime.min
+
+    data_sorted = sorted(data, key=lambda x: x['_ts'], reverse=True)
+    top10 = data_sorted[:10]
+
+    # Preparar objetos para insertar
     sismos = []
-    for item in data[:10]:
+    for item in top10:
         sismos.append({
             'id': str(uuid.uuid4()),
             'reporte': item.get('reporte', ''),
             'referencia': item.get('referencia', ''),
             'fecha_hora': item.get('fecha_hora_local', ''),
-            'magnitud': item.get('magnitud', '')
+            'magnitud': str(item.get('magnitud', ''))
         })
 
-    # Conectar a DynamoDB
-    dynamodb = boto3.resource('dynamodb')
-    table = dynamodb.Table('TablaSismosIGP')
+    # Conexión a DynamoDB
+    dynamo = boto3.resource('dynamodb')
+    table = dynamo.Table('TablaSismosIGP')
 
-    # Eliminar items antiguos
-    scan = table.scan()
+    # Limpiar la tabla antes de insertar nuevos registros
+    resp_scan = table.scan()
     with table.batch_writer() as batch:
-        for item in scan.get('Items', []):
-            batch.delete_item(Key={'id': item['id']})
+        for old in resp_scan.get('Items', []):
+            batch.delete_item(Key={'id': old['id']})
 
-    # Insertar nuevos sismos
+    # Insertar los 10 más recientes
     with table.batch_writer() as batch:
-        for sismo in sismos:
-            batch.put_item(Item=sismo)
+        for s in sismos:
+            batch.put_item(Item=s)
 
     return {
         'statusCode': 200,
         'body': {
-            'mensaje': f"{len(sismos)} sismos insertados correctamente desde API JSON.",
+            'mensaje': f"{len(sismos)} sismos recientes insertados.",
             'sismos': sismos
         }
     }
