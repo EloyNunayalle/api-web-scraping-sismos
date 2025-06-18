@@ -1,35 +1,54 @@
 import requests
 import boto3
 import uuid
-###### no funciona porque .......
-def lambda_handler(event, context):
-    datos = obtener_ultimo_sismo()
-    if not datos:
-        return {"statusCode": 404,"body": "No se obtuvieron datos del IGP."}
 
-    rows = []
-    for feat in datos[:10]:
-        a = feat["attributes"]
-        rows.append({
-            "id": str(uuid.uuid4()),
-            "fecha_hora": a["FECHA_HORA"],
-            "magnitud": a["MAGNITUD"],
-            "referencia": a.get("UBICACION", "")
+def lambda_handler(event, context):
+    url = "https://ultimosismo.igp.gob.pe/api/ultimosismo/ajaxb/2025"
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    
+    response = requests.get(url, headers=headers)
+    
+    if response.status_code != 200:
+        return {
+            'statusCode': response.status_code,
+            'body': 'No se pudo acceder a la API del IGP.'
+        }
+
+    try:
+        data = response.json()
+    except ValueError:
+        return {
+            'statusCode': 500,
+            'body': 'La respuesta no es un JSON válido.'
+        }
+
+    # Tomar los primeros 10 sismos
+    sismos = []
+    for item in data[:10]:
+        sismos.append({
+            'id': str(uuid.uuid4()),
+            'reporte': item.get('reporte', ''),
+            'referencia': item.get('referencia', ''),
+            'fecha_hora': item.get('fecha_hora_local', ''),
+            'magnitud': item.get('magnitud', '')
         })
 
-    db = boto3.resource('dynamodb').Table('TablaSismosIGP')
-    with db.batch_writer() as batch:
-        for r in rows:
-            batch.put_item(Item=r)
+    # Conectar a DynamoDB
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table('TablaSismosIGP')
 
-    return {"statusCode":200,
-            "body": f"{len(rows)} sismos insertados correctamente."}
+    # Eliminar items antiguos
+    scan = table.scan()
+    with table.batch_writer() as batch:
+        for item in scan.get('Items', []):
+            batch.delete_item(Key={'id': item['id']})
 
-def obtener_ultimo_sismo():
-    url = "https://ide.igp.gob.pe/arcgis/rest/services/monitoreocensis/UltimoSismo/MapServer/0/query"
-    params = {"where":"1=1","outFields":"*","f":"json",
-              "orderByFields":"FECHA_HORA DESC","resultRecordCount":10}
-    resp = requests.get(url, params=params, timeout=10)
-    resp.raise_for_status()
-    return resp.json().get("features", [])
+    # Insertar nuevos sismos
+    with table.batch_writer() as batch:
+        for sismo in sismos:
+            batch.put_item(Item=sismo)
 
+    return {
+        'statusCode': 200,
+        'body': f"{len(sismos)} sismos insertados correctamente desde API JSON."
+    }
