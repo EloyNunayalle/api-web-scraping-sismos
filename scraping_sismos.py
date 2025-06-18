@@ -43,7 +43,7 @@ def lambda_handler(event, context):
 
     # Conectar a DynamoDB
     table = boto3.resource('dynamodb').Table('TablaSismosIGP')
-    # borrar tabla existente
+    # Eliminar items antiguos
     scan = table.scan()
     with table.batch_writer() as batch:
         for old in scan.get('Items', []):
