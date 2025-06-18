@@ -15,6 +15,7 @@ def lambda_handler(event, context):
 
     try:
         data = response.json()
+        print(json.dumps(data, indent=2, ensure_ascii=False))
     except ValueError:
         return {
             'statusCode': 500,
