@@ -4,9 +4,8 @@ import uuid
 
 def lambda_handler(event, context):
     url = "https://ultimosismo.igp.gob.pe/api/ultimosismo/ajaxb/2025"
-    headers = {'User-Agent': 'Mozilla/5.0'}
     
-    response = requests.get(url, headers=headers)
+    response = requests.get(url)
     
     if response.status_code != 200:
         return {
