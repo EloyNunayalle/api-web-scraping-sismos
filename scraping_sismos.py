@@ -1,6 +1,8 @@
 import requests
 import boto3
 import uuid
+import json
+
 
 def lambda_handler(event, context):
     url = "https://ultimosismo.igp.gob.pe/api/ultimo-sismo/ajaxb/2025"
