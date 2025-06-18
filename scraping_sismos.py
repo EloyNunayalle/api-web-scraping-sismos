@@ -3,7 +3,7 @@ import boto3
 import uuid
 
 def lambda_handler(event, context):
-    url = "https://ultimosismo.igp.gob.pe/api/ultimosismo/ajaxb/2025"
+    url = "https://ultimosismo.igp.gob.pe/api/ultimo-sismo/ajaxb/2025"
     
     response = requests.get(url)
     
