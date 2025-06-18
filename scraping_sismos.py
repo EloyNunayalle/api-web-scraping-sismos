@@ -49,5 +49,8 @@ def lambda_handler(event, context):
 
     return {
         'statusCode': 200,
-        'body': f"{len(sismos)} sismos insertados correctamente desde API JSON."
+        'body': {
+            'mensaje': f"{len(sismos)} sismos insertados correctamente desde API JSON.",
+            'sismos': sismos
+        }
     }
